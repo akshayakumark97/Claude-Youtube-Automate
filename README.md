@@ -353,6 +353,7 @@ reliably centred.
 | `--category` | `24` (Entertainment) |
 | `--cleanup` | — passed through to `upload_youtube.py` |
 | `--publish-at` | — passed through to `upload_youtube.py`, schedules public release |
+| `--thumbnail` / `--thumbnail-text` | off | generates a `.thumb.jpg` sidecar (best frame + bold text overlay), auto-uploaded with `--upload` |
 
 ---
 
@@ -372,6 +373,16 @@ standalone:
 
 Privacy defaults to **private** everywhere. Nothing is ever published without
 passing `--privacy public` explicitly.
+
+### Thumbnails
+
+`--thumbnail --thumbnail-text "SOME TEXT"` generates `<stem>.thumb.jpg`: the sharpest,
+best-lit frame sampled from the cut's kept dialogue segments (rejecting motion-blurred or
+too-dark/blown-out candidates), always cropped edge-to-edge to the output aspect
+regardless of the video's own layout, with a bold white-on-black-stroke text overlay.
+`--upload` picks it up automatically; standalone, pass `upload_youtube.py --thumbnail
+PATH`. The `youtube.upload` OAuth scope can set thumbnails (confirmed working), unlike
+deleting a video, which it cannot.
 
 To schedule a public release instead of publishing immediately, pass
 `--publish-at YYYY-MM-DDTHH:MM:SSZ` (UTC). YouTube only honors `publishAt` on

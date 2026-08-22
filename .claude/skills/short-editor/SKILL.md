@@ -14,6 +14,32 @@ Do not ask "what can I trim this down to?" Ask:
 The beginning of the source is almost never the beginning of the Short. Greetings,
 channel intros, setup and preamble are the first things to go.
 
+## Get the story context first
+
+Before picking a window, understand what's actually happening — don't select a span just
+because its transcript happens to be clean or a caption is easy to trust. A dialogue line
+read in isolation, without knowing who's talking, what they want, and what's at stake,
+tells you nothing about whether it holds a stranger's attention.
+
+Build that context before evaluating candidates:
+
+- Pull whatever metadata is available first — the source's own title and description (for
+  a `--url` fetch, the real YouTube title/description, not just the filename), cast,
+  genre. This is often enough to tell a scene-setting beat from the actual payoff.
+- For a movie/show clip, a quick web search on the title (plot, characters, what the scene
+  in question is from) turns a guess into an informed choice — worth doing whenever the
+  transcript alone doesn't make the stakes clear, especially for a trailer/glimpse where
+  individual lines are fragments of a larger plot.
+- Read enough of the surrounding footage (frames, not just the transcript window you're
+  considering) to know where a candidate span sits in the story — right before a reveal,
+  mid-argument, after the twist — not just whether the audio transcribed cleanly.
+- Only after that: judge hook strength, emotion, and payoff against the real story, and
+  choose the span that keeps attention because of what's actually happening, not because
+  it was the easiest one to caption.
+
+This context also makes titles, descriptions, and thumbnail text sharper — you're
+describing what a scene means, not paraphrasing a transcript fragment.
+
 ## What the pipeline lets you do
 
 Read the "Behaviour that will surprise you" section of `CLAUDE.md` before proposing
@@ -75,6 +101,14 @@ This affects editorial judgement, not just captioning:
   transcription of the spoken language is what should be captioned.
 - If you are inferring emotional tone because you don't have native fluency in the specific
   language, say so explicitly rather than presenting a guess as a confident read.
+- **Caption policy: English dialogue always gets captions. Regional-language dialogue only
+  gets captions if the source has burned-in subtitles to draw from — otherwise render with
+  `--no-subs`, full stop.** Do not caption regional dialogue from a Whisper transcript, even
+  with `--language` forced to the right code. Whisper hallucinates fluently-readable-looking
+  text over music, noise, or uncertain audio in any language, and neither you nor most
+  viewers can tell a hallucination from real dialogue in an unfamiliar script — a wrong
+  caption there is worse than no caption. `--language` is still worth using to get cleaner
+  dialogue-line timing for the cut itself, even when the result won't carry on-screen text.
 
 ## The hook
 
@@ -179,15 +213,34 @@ recommend one (per Framing above) but confirm before rendering. Never default to
 otherwise obvious. Duration and layout stay under the normal "ask only when genuinely
 unclear" rule — this carve-out is specifically for aspect ratio/size.
 
-## Titles, description, tags
+## Titles, description, tags — SEO
 
 Titles should be short, specific to what actually happens, and curiosity-driven without
 lying. "He Didn't Expect This Answer" is fine *if he didn't*. Skip "Amazing Moment",
 "You Won't Believe This", and keyword stuffing.
 
-Description: a sentence or two explaining the moment, relevant keywords used naturally,
-`#Shorts` included. A handful of relevant hashtags, not a wall. Tags drawn from the topic,
-subject and niche.
+SEO and curiosity are not in tension — write for both at once:
+- Put the highest-value searchable term early in the title: the show/movie/person/topic
+  name, not buried after a clever phrase. "KAAKA: [hook]" beats "[hook] — a KAAKA moment."
+- Use the terms a fan would actually type into search (movie name, actor/character name,
+  franchise number, event name) rather than a vaguer paraphrase, as long as it stays true
+  to the clip.
+- One idea per title — don't cram multiple keywords in if it stops reading like a title a
+  human would click.
+
+Description: front-load it — the first 1–2 lines are what search and suggested-videos
+surfaces, so put the searchable specifics (who, what, from where) up top, not buried after
+a mood-setting sentence. Relevant keywords used naturally, `#Shorts` included. A handful of
+relevant hashtags, not a wall — put the highest-value one first.
+
+Tags: drawn from the topic, subject and niche, ordered highest-value first — title/topic
+name, then people, then genre/category terms. Same accuracy bar as everything else: don't
+tag a name or claim that isn't actually true of the clip just because it would rank well.
+
+Thumbnail: always pass `--thumbnail --thumbnail-text "SHORT PHRASE"` when rendering — 2-4
+words, the same searchable term that leads the title (a name, a topic), not a full
+sentence. The pipeline auto-picks the sharpest frame and composites bold text; don't
+hand-pick a frame or build a thumbnail outside this flag.
 
 CTA only when it fits, and never over the hook, the punchline or the payoff. The content is
 supposed to be the reason someone subscribes.

@@ -250,7 +250,7 @@ def detect_burned_subs(src, info, picture, speech_times):
 # 2. transcription (cached)
 # --------------------------------------------------------------------------
 
-def transcribe(src, key, force=False, model=WHISPER_MODEL):
+def transcribe(src, key, force=False, model=WHISPER_MODEL, language=None):
     def build():
         os.makedirs(WORK_DIR, exist_ok=True)
         wav = os.path.join(WORK_DIR, "asr.wav")
@@ -258,7 +258,7 @@ def transcribe(src, key, force=False, model=WHISPER_MODEL):
             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav])
         import mlx_whisper
         r = mlx_whisper.transcribe(
-            wav, path_or_hf_repo=model,
+            wav, path_or_hf_repo=model, language=language,
             word_timestamps=True, condition_on_previous_text=False,
         )
         os.remove(wav)
@@ -274,7 +274,10 @@ def transcribe(src, key, force=False, model=WHISPER_MODEL):
                 for s in r["segments"]
             ],
         }
-    return cached(key + ".transcript", build, force)
+    # language forced into the cache key: an auto-detect transcript and a
+    # forced-language one for the same source are not interchangeable.
+    suffix = f".{language}" if language else ""
+    return cached(key + ".transcript" + suffix, build, force)
 
 
 def clean_segments(tr, duration):
@@ -529,6 +532,79 @@ def caption_track(events, out_dir, duration, list_path):
     return len(entries)
 
 
+def frame_score(path):
+    """Sharpness (Laplacian variance) for picking the least-blurred
+    candidate thumbnail frame; zeroed out if too dark or blown out."""
+    import numpy as np
+    from PIL import Image
+
+    gray = np.asarray(Image.open(path).convert("L"), dtype=np.float64)
+    if gray.mean() < 25 or gray.mean() > 230:
+        return 0.0
+    lap = (-4 * gray + np.roll(gray, 1, 0) + np.roll(gray, -1, 0)
+           + np.roll(gray, 1, 1) + np.roll(gray, -1, 1))
+    return lap.var()
+
+
+def pick_thumbnail_frame(src, segs, dest_dir):
+    """Sample the midpoint of each kept dialogue segment and keep the
+    sharpest, best-lit candidate — avoids motion blur and mid-blink frames."""
+    os.makedirs(dest_dir, exist_ok=True)
+    best_path, best_score = None, -1.0
+    for i, (s, e) in enumerate(segs):
+        path = os.path.join(dest_dir, f"candidate_{i}.jpg")
+        sh(["ffmpeg", "-y", "-v", "error", "-ss", f"{(s + e) / 2:.3f}",
+            "-i", src, "-frames:v", "1", "-q:v", "2", path])
+        score = frame_score(path)
+        if score > best_score:
+            best_score, best_path = score, path
+    return best_path
+
+
+def render_thumbnail(src, segs, area, out_w, out_h, text, dest):
+    """Best-frame + bold text-overlay thumbnail. Always fills the frame
+    edge-to-edge (the --layout crop math) regardless of the video's own
+    layout — a thumbnail wants density, not composition fidelity."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    tmp_dir = os.path.join(WORK_DIR, "thumb_candidates")
+    frame_path = pick_thumbnail_frame(src, segs, tmp_dir)
+
+    ar = out_w / out_h
+    cw = even(min(area["w"], area["h"] * ar))
+    ch = even(min(area["h"], area["w"] / ar))
+    cx = area["x"] + even((area["w"] - cw) / 2)
+    cy = area["y"]
+
+    img = Image.open(frame_path).convert("RGB")
+    img = img.crop((cx, cy, cx + cw, cy + ch)).resize(
+        (out_w, out_h), Image.LANCZOS)
+
+    if text:
+        font_path = pick_font(text)
+        font_size = round(out_w * 0.13)
+        probe_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        max_w = out_w * 0.9
+        label = text.upper()
+        font = ImageFont.truetype(font_path, font_size)
+        while (probe_draw.textlength(label, font=font) > max_w
+               and font_size > 24):
+            font_size -= 4
+            font = ImageFont.truetype(font_path, font_size)
+
+        stroke = max(3, round(font_size * 0.09))
+        y = round(out_h * 0.14)
+        d = ImageDraw.Draw(img)
+        d.text((out_w // 2 + 3, y + 4), label, font=font,
+               fill=(0, 0, 0, 160), anchor="ma")
+        d.text((out_w // 2, y), label, font=font, fill=(255, 255, 255),
+               stroke_width=stroke, stroke_fill=(0, 0, 0), anchor="ma")
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    img.save(dest, "JPEG", quality=90)
+    return dest
+
+
 def write_srt(events, path):
     def ts(t):
         ms = int(round(t * 1000))
@@ -751,10 +827,20 @@ def main():
                     help="defaults per --mode")
     ap.add_argument("--no-subs", action="store_true",
                     help="skip burning captions")
+    ap.add_argument("--thumbnail", action="store_true",
+                    help="generate an SEO-style thumbnail sidecar "
+                         "(best frame + bold text overlay)")
+    ap.add_argument("--thumbnail-text",
+                    help="bold overlay text for --thumbnail; required "
+                         "with --thumbnail")
     ap.add_argument("--keep-subs", action="store_true",
                     help="do NOT crop away burned-in subtitles")
     ap.add_argument("--refresh", action="store_true",
                     help="ignore caches and redo analysis/transcription")
+    ap.add_argument("--language",
+                    help="force Whisper's spoken-language code (e.g. te, hi, "
+                         "ta, kn) instead of auto-detect; use when the "
+                         "auto-detected language produces garbled text")
     ap.add_argument("--upload", action="store_true")
     ap.add_argument("--privacy", default="private",
                     choices=("private", "unlisted", "public"))
@@ -767,6 +853,9 @@ def main():
     ap.add_argument("--publish-at", default=None,
                     help="passed through to upload_youtube.py")
     args = ap.parse_args()
+
+    if args.thumbnail and not args.thumbnail_text:
+        raise SystemExit("--thumbnail requires --thumbnail-text")
 
     for flag, value in MODE_PRESETS[args.mode].items():
         if getattr(args, flag) is None:
@@ -788,7 +877,7 @@ def main():
 
     t_start = time.time()
     key = fingerprint(src)
-    TOTAL = 7
+    TOTAL = 8 if args.thumbnail else 7
 
     step(1, TOTAL, "Probing source...")
     info = probe(src)
@@ -801,10 +890,11 @@ def main():
         f"{hms(info['duration'])}   picture {geo['w']}x{geo['h']}"
         f"+{geo['x']}+{geo['y']}" + ("  (cached)" if hit else ""))
 
+    transcript_suffix = f".{args.language}" if args.language else ""
     step(2, TOTAL, "Transcribing" + (" (cached)" if os.path.exists(
-        os.path.join(CACHE_DIR, key + ".transcript.json"))
+        os.path.join(CACHE_DIR, key + ".transcript" + transcript_suffix + ".json"))
         and not args.refresh else " — first run, please wait") + "...")
-    tr, hit = transcribe(src, key, args.refresh)
+    tr, hit = transcribe(src, key, args.refresh, language=args.language)
     segments = clean_segments(tr, info["duration"])
     speech = sum(s["end"] - s["start"] for s in segments)
     say(f"      {len(segments)} dialogue lines, {speech:.1f}s of speech "
@@ -970,6 +1060,15 @@ def main():
     say(f"      {os.path.relpath(out, BASE_DIR)}  "
         f"{got['width']}x{got['height']}  {got['duration']:.2f}s  "
         f"{os.path.getsize(out) / 1e6:.1f}MB")
+
+    thumb_path = None
+    if args.thumbnail:
+        step(8, TOTAL, "Generating thumbnail...")
+        thumb_path = stem + ".thumb.jpg"
+        render_thumbnail(src, segs, area, out_w, out_h,
+                         args.thumbnail_text, thumb_path)
+        say(f"      {os.path.relpath(thumb_path, BASE_DIR)}")
+
     say(f"\nDone in {time.time() - t_start:.1f}s.")
 
     if args.upload:
@@ -984,6 +1083,8 @@ def main():
             up += ["--cleanup", args.cleanup]
         if args.publish_at:
             up += ["--publish-at", args.publish_at]
+        if thumb_path:
+            up += ["--thumbnail", thumb_path]
         sh(up, capture=False)
     elif args.cleanup:
         say(f"(--cleanup ignored without --upload)")

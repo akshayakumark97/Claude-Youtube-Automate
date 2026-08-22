@@ -30,6 +30,7 @@ SIDECAR_SUFFIXES = (
     ".title.txt",
     ".description.txt",
     ".tags.txt",
+    ".thumb.jpg",
 )
 
 # Directories cleanup is ever allowed to touch, relative to BASE_DIR.
@@ -69,6 +70,7 @@ def upload_video(
     tags=None,
     category_id="22",
     publish_at=None,
+    thumbnail=None,
 ):
     credentials = authenticate()
 
@@ -126,6 +128,13 @@ def upload_video(
 
     print("Upload completed!")
     print(f"https://www.youtube.com/watch?v={response['id']}")
+
+    if thumbnail:
+        youtube.thumbnails().set(
+            videoId=response["id"],
+            media_body=MediaFileUpload(thumbnail, mimetype="image/jpeg"),
+        ).execute()
+        print("Thumbnail set.")
 
     if publish_at:
         print(
@@ -280,6 +289,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--thumbnail",
+        help="path to a custom thumbnail image to set after upload",
+    )
+
+    parser.add_argument(
         "--category",
         default="22",
         help="YouTube categoryId (24=Entertainment, 1=Film & Animation)",
@@ -353,6 +367,7 @@ if __name__ == "__main__":
             [t.strip() for t in args.tags.split(",") if t.strip()],
             args.category,
             args.publish_at,
+            args.thumbnail,
         )
 
         # Never clean up unless YouTube actually accepted the video.

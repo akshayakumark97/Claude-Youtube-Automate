@@ -37,7 +37,16 @@ only what must never be re-derived or re-litigated.
 - The source must have an audio track or the script exits.
 - Whisper misreads names, brands, coined words and numbers. Verify anything load-bearing
   against the source and correct it with `--fix`.
-- `work/` is created on demand. `thumbnails/` is not touched by any script.
+- `work/` is created on demand. `thumbnails/` is not touched by any script — generated
+  thumbnails are a `.thumb.jpg` sidecar in `output/`, not that directory.
+- `--thumbnail` generates an SEO-style thumbnail: the sharpest, best-lit frame from the
+  cut's kept dialogue segments (Laplacian-variance scoring, dark/blown-out frames
+  rejected), with a bold white-on-black-stroke text overlay from `--thumbnail-text`. It
+  always fills the frame edge-to-edge (the `--layout crop` math) regardless of the
+  video's own layout — a thumbnail wants density, not composition fidelity. `--upload`
+  passes it through automatically; `upload_youtube.py --thumbnail PATH` also sets one on
+  a standalone upload. Confirmed: the `youtube.upload` scope *can* set a video's
+  thumbnail (unlike delete, which it cannot).
 - Default layout for `--mode short` is `letterbox` — native pixels, plain black fill, **no
   blur pass** — because that's faster to render. `--layout blur` is opt-in: use it only when
   a blurred/filled background is explicitly wanted, or the output is much narrower than the
@@ -147,6 +156,16 @@ text is the only translation, render with `--keep-subs --no-subs` at `720x1280` 
 centre column and cuts the text off at both ends, and `480x720` shrinks it to roughly
 15px.
 
+**Caption policy by language.** English dialogue: always caption from Whisper — it's
+reliable enough to trust. Non-English dialogue: only caption from burned-in subtitles
+(above). If there are none, render with plain `--no-subs` — do **not** caption from a
+Whisper transcript of the regional language, even with `--language` forcing the correct
+code. Whisper hallucinates on music/noise regardless of language, and a hallucinated
+line in an unfamiliar script is worse than no caption: it looks plausible to anyone who
+doesn't read that script, including Claude. `--language <code>` (e.g. `te`, `hi`, `ta`,
+`kn`) still helps the *cut-planning* algorithm find cleaner dialogue-line boundaries even
+when the result won't be shown as on-screen text.
+
 ## Flags
 
 `README.md` has the full reference; `--help` is the authority if this drifts. Do not
@@ -166,6 +185,7 @@ invent flags. Notable ones beyond the obvious:
 --no-subs              render no captions of our own
 --refresh              ignore all three caches
 --quality 1-100        videotoolbox quality, default 60
+--thumbnail / --thumbnail-text  generate a best-frame + bold-text-overlay thumbnail sidecar (.thumb.jpg); text required with --thumbnail; auto-uploaded via --upload
 --title / --description / --tags / --category    metadata (category default 24)
 --privacy private|unlisted|public                default private
 --publish-at YYYY-MM-DDTHH:MM:SSZ                schedule public release (UTC, must be future); uploads private regardless of --privacy, YouTube flips it public at this time
