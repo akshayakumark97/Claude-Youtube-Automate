@@ -151,6 +151,7 @@ invent flags. Notable ones beyond the obvious:
 --quality 1-100        videotoolbox quality, default 60
 --title / --description / --tags / --category    metadata (category default 24)
 --privacy private|unlisted|public                default private
+--publish-at YYYY-MM-DDTHH:MM:SSZ                schedule public release (UTC, must be future); uploads private regardless of --privacy, YouTube flips it public at this time
 --cleanup work,output,input                      ignored without --upload
 --interactive          blocks on stdin — NEVER use it non-interactively
 ```

@@ -346,6 +346,7 @@ large flat black areas.
 | `--title` / `--description` / `--tags` | derived from transcript |
 | `--category` | `24` (Entertainment) |
 | `--cleanup` | — passed through to `upload_youtube.py` |
+| `--publish-at` | — passed through to `upload_youtube.py`, schedules public release |
 
 ---
 
@@ -365,6 +366,12 @@ standalone:
 
 Privacy defaults to **private** everywhere. Nothing is ever published without
 passing `--privacy public` explicitly.
+
+To schedule a public release instead of publishing immediately, pass
+`--publish-at YYYY-MM-DDTHH:MM:SSZ` (UTC). YouTube only honors `publishAt` on
+a video uploaded `privacyStatus=private`, so the tool uploads it private
+regardless of `--privacy` and lets YouTube flip it public itself at that
+timestamp. The timestamp must be strictly in the future.
 
 > **Verification caveat.** `token.json` carries only the
 > `youtube.upload` scope, so reading a video's status back returns HTTP 403.

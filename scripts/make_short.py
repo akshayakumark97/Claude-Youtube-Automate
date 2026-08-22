@@ -761,6 +761,8 @@ def main():
     ap.add_argument("--category", default="24")
     ap.add_argument("--cleanup", default="",
                     help="passed through to upload_youtube.py")
+    ap.add_argument("--publish-at", default=None,
+                    help="passed through to upload_youtube.py")
     args = ap.parse_args()
 
     for flag, value in MODE_PRESETS[args.mode].items():
@@ -977,6 +979,8 @@ def main():
             up += ["--tags", args.tags]
         if args.cleanup:
             up += ["--cleanup", args.cleanup]
+        if args.publish_at:
+            up += ["--publish-at", args.publish_at]
         sh(up, capture=False)
     elif args.cleanup:
         say(f"(--cleanup ignored without --upload)")

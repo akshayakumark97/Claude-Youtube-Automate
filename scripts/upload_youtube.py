@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import os
 import shutil
 
@@ -67,6 +68,7 @@ def upload_video(
     privacy="private",
     tags=None,
     category_id="22",
+    publish_at=None,
 ):
     credentials = authenticate()
 
@@ -76,6 +78,10 @@ def upload_video(
         credentials=credentials,
     )
 
+    # YouTube only honors publishAt when the video is uploaded private; it
+    # flips privacyStatus to public itself at that timestamp.
+    effective_privacy = "private" if publish_at else privacy
+
     request_body = {
         "snippet": {
             "title": title,
@@ -83,10 +89,13 @@ def upload_video(
             "categoryId": category_id,
         },
         "status": {
-            "privacyStatus": privacy,
+            "privacyStatus": effective_privacy,
             "selfDeclaredMadeForKids": False,
         },
     }
+
+    if publish_at:
+        request_body["status"]["publishAt"] = publish_at
 
     if tags:
         request_body["snippet"]["tags"] = tags
@@ -117,6 +126,12 @@ def upload_video(
 
     print("Upload completed!")
     print(f"https://www.youtube.com/watch?v={response['id']}")
+
+    if publish_at:
+        print(
+            f"Scheduled to go public at {publish_at} "
+            f"(uploaded as privacyStatus=private until then)."
+        )
 
     return response["id"]
 
@@ -248,6 +263,17 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--publish-at",
+        default=None,
+        help=(
+            "schedule the public release for this UTC time instead of "
+            "publishing immediately, e.g. 2026-08-22T12:30:00Z; uploads as "
+            "privacyStatus=private and YouTube flips it public at this "
+            "timestamp"
+        ),
+    )
+
+    parser.add_argument(
         "--tags",
         default="",
         help="comma-separated YouTube tags",
@@ -297,6 +323,20 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.publish_at:
+        try:
+            when = datetime.datetime.strptime(
+                args.publish_at,
+                "%Y-%m-%dT%H:%M:%SZ",
+            ).replace(tzinfo=datetime.timezone.utc)
+        except ValueError:
+            parser.error(
+                "--publish-at must look like 2026-08-22T12:30:00Z (UTC)"
+            )
+
+        if when <= datetime.datetime.now(datetime.timezone.utc):
+            parser.error("--publish-at must be in the future")
+
     targets = [t.strip() for t in args.cleanup.split(",") if t.strip()]
 
     if args.skip_upload:
@@ -312,6 +352,7 @@ if __name__ == "__main__":
             args.privacy,
             [t.strip() for t in args.tags.split(",") if t.strip()],
             args.category,
+            args.publish_at,
         )
 
         # Never clean up unless YouTube actually accepted the video.
