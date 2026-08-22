@@ -46,7 +46,12 @@ only what must never be re-derived or re-litigated.
   video's own layout — a thumbnail wants density, not composition fidelity. `--upload`
   passes it through automatically; `upload_youtube.py --thumbnail PATH` also sets one on
   a standalone upload. Confirmed: the `youtube.upload` scope *can* set a video's
-  thumbnail (unlike delete, which it cannot).
+  thumbnail (unlike delete, which it cannot). A thumbnail set immediately after
+  `videos.insert` can land as a grey placeholder in Studio even though the API call
+  reports success — YouTube hadn't finished initial processing yet, and there's no
+  error to catch. `upload_video()` sets it twice (once immediately, once ~25s later)
+  to paper over this; if Studio still shows grey after both, it's worth a manual
+  re-check rather than assuming the upload failed.
 - Default layout for `--mode short` is `letterbox` — native pixels, plain black fill, **no
   blur pass** — because that's faster to render. `--layout blur` is opt-in: use it only when
   a blurred/filled background is explicitly wanted, or the output is much narrower than the
@@ -228,7 +233,17 @@ in-conversation confirmation from the user.
 
 The OAuth token carries the `youtube.upload` scope only, so it **cannot read a video's
 status back**. Report what the request set — "upload request completed with
-privacyStatus=private" — never "I verified the video is private on YouTube."
+privacyStatus=private" — never "I verified the video is private on YouTube." Confirmed
+this session: `videos.delete`, `videos.list`, and `videos.update` all fail with `403
+insufficientPermissions` under this scope — only `videos.insert` and `thumbnails.set`
+work. A metadata fix (title, description, disclaimer) after upload requires the user to
+edit it in Studio; get it right at upload time.
+
+**Recent official studio trailers get Content ID blocked, often within minutes** — this
+looks like a broken upload or a missing thumbnail (grey placeholder, `404 videoNotFound`
+on API calls) but is actually YouTube restricting the video, not a pipeline bug. Don't
+assume a code fix will resolve a block. See the `short-editor` skill's rights-disclaimer
+guidance for what to add to descriptions when cutting from studio-owned source material.
 
 ## File safety
 

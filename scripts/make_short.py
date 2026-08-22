@@ -694,18 +694,26 @@ ACHAIN = ("highpass=f=55,equalizer=f=180:t=q:w=1.1:g=-1.5,"
           "alimiter=limit=0.94")
 
 
-def trim_nodes(segs, fade=0.05):
+def trim_nodes(segs, fade=0.05, declick=0.008):
+    """Concatenate the kept segments. Only the true start and end of the
+    whole video get a real fade — internal joins get a ~8ms declick fade
+    instead of the full fade-to-silence-and-back-up, which otherwise reads
+    as an audible dip/break at every cut when there's continuous score or
+    dialogue underneath."""
+    n = len(segs)
     vn, an, vl, al = [], [], [], []
     for i, (s, e) in enumerate(segs):
         d = e - s
+        in_d = fade if i == 0 else declick
+        out_d = fade if i == n - 1 else declick
         vn.append(f"[0:v]trim=start={s}:end={e},setpts=PTS-STARTPTS[v{i}]")
         an.append(f"[0:a]atrim=start={s}:end={e},asetpts=PTS-STARTPTS,"
-                  f"afade=t=in:st=0:d={fade},"
-                  f"afade=t=out:st={d - fade:.3f}:d={fade}[a{i}]")
+                  f"afade=t=in:st=0:d={in_d},"
+                  f"afade=t=out:st={d - out_d:.3f}:d={out_d}[a{i}]")
         vl.append(f"[v{i}]")
         al.append(f"[a{i}]")
-    vn.append("".join(vl) + f"concat=n={len(segs)}:v=1:a=0[vc]")
-    an.append("".join(al) + f"concat=n={len(segs)}:v=0:a=1[ac]")
+    vn.append("".join(vl) + f"concat=n={n}:v=1:a=0[vc]")
+    an.append("".join(al) + f"concat=n={n}:v=0:a=1[ac]")
     return vn, an
 
 

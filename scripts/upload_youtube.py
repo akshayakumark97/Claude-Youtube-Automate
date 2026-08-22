@@ -2,11 +2,13 @@ import argparse
 import datetime
 import os
 import shutil
+import time
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 
@@ -130,11 +132,23 @@ def upload_video(
     print(f"https://www.youtube.com/watch?v={response['id']}")
 
     if thumbnail:
-        youtube.thumbnails().set(
-            videoId=response["id"],
-            media_body=MediaFileUpload(thumbnail, mimetype="image/jpeg"),
-        ).execute()
-        print("Thumbnail set.")
+        # A custom thumbnail set immediately after insert can land as a grey
+        # placeholder in Studio if YouTube hasn't finished initial video
+        # processing yet -- the API call itself reports success either way,
+        # so a single fire-and-forget call can't detect this. Re-apply once
+        # more after a delay so a placeholder from the first attempt gets
+        # overwritten once processing has caught up.
+        media = MediaFileUpload(thumbnail, mimetype="image/jpeg")
+        for attempt, delay in enumerate((0, 25)):
+            if delay:
+                time.sleep(delay)
+            try:
+                youtube.thumbnails().set(
+                    videoId=response["id"], media_body=media
+                ).execute()
+                print(f"Thumbnail set (attempt {attempt + 1}/2).")
+            except HttpError as e:
+                print(f"Thumbnail set attempt {attempt + 1}/2 failed: {e}")
 
     if publish_at:
         print(

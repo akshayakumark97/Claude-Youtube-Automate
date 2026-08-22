@@ -242,6 +242,24 @@ words, the same searchable term that leads the title (a name, a topic), not a fu
 sentence. The pipeline auto-picks the sharpest frame and composites bold text; don't
 hand-pick a frame or build a thumbnail outside this flag.
 
+**Rights disclaimer for studio/licensed source material.** When the source is an official
+movie/show trailer, glimpse, or other studio-owned footage (not the user's own content),
+append a disclaimer to the description, after the normal copy:
+
+```
+Disclaimer: All footage and rights belong to [production house / rights holder] and the
+makers of [title]. This fan edit is shared for promotional/discussion purposes only. No
+copyright infringement intended — contact for removal.
+```
+
+Fill in the actual production house/rights holder from what's confirmed during the story-
+context research step — never guess a company name. This doesn't guarantee a Content ID
+claim won't land (recent, heavily-promoted studio trailers get matched fast, sometimes
+within minutes), but it's a reasonable-effort attachment of attribution up front rather
+than something bolted on after a block. Once uploaded, the upload-only OAuth scope cannot
+edit an existing video's description (`videos.update` fails the same way `delete` and
+`list` do) — get the disclaimer in at upload time, not as a follow-up fix.
+
 CTA only when it fits, and never over the hook, the punchline or the payoff. The content is
 supposed to be the reason someone subscribes.
 
