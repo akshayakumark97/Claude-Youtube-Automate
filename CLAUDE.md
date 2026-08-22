@@ -144,7 +144,10 @@ overridable with `--font-size`), centred at 81% of output height with shadow and
 stroke. `--fix WRONG=RIGHT` is case-insensitive and repeatable.
 
 Audio: always highpass → EQ → compressor → limiter → two-pass `loudnorm` to −14 LUFS,
-with a 0.6s fade on picture and sound at the end.
+with a 0.6s fade on picture and sound at the end. Internal cuts between kept segments
+use an ~8ms declick fade (not a real fade) — a full fade-to-silence-and-back at every
+join reads as an audible break with continuous score/dialogue underneath. Only the
+true first segment start and last segment end get the real fade.
 
 Sidecars written beside the video: `.srt`, `.title.txt`, `.description.txt`, `.tags.txt`.
 Without `--title`/`--description` they are auto-filled with the first 70/400 characters of
