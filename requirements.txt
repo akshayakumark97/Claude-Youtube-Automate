@@ -1,0 +1,6 @@
+mlx-whisper
+numpy
+pillow
+yt-dlp
+google-api-python-client
+google-auth-oauthlib

@@ -50,7 +50,7 @@ upload opens a browser to authorise and writes `credentials/token.json`.
 ```
 input/        source videos — never modified or deleted
 output/       finished videos + .srt / .title / .description / .tags sidecars
-scripts/      make_short.py, upload_youtube.py
+scripts/      make_short.py, fetch_source.py, upload_youtube.py
 credentials/  client_secret.json, token.json
 .cache/       transcript + geometry cache, keyed by file fingerprint
 work/         scratch (caption PNGs); safe to delete anytime
@@ -60,7 +60,50 @@ work/         scratch (caption PNGs); safe to delete anytime
 
 ## Quick start
 
-### 1. Look before you cut
+### 0. Get the source
+
+Already have the file? Drop it in `input/` and skip to step 1. Otherwise pass a
+link and the pipeline fetches it first:
+
+```bash
+make_short.py --url "https://youtu.be/XXXXXXXXXXX" --analyze
+```
+
+Or download on its own, which prints the resulting path:
+
+```bash
+scripts/fetch_source.py "https://youtu.be/XXXXXXXXXXX"
+```
+
+This wraps yt-dlp. It prefers H.264 + AAC in MP4 (VP9 and AV1 decode much
+slower through the render filter graph), caps the download at 1080p by default
+since a Short is at most 1080 wide, and reuses a file already sitting in
+`input/` instead of pulling it again. Page links and plain direct file URLs
+both work.
+
+### 1. Pick a delivery mode
+
+```bash
+make_short.py --input input/VIDEO.mp4                 # Short:  1080x1920, blur
+make_short.py --input input/VIDEO.mp4 --mode video    # Video:  1920x1080, crop
+```
+
+| | `--mode short` (default) | `--mode video` |
+|---|---|---|
+| Size | `1080x1920` (9:16) | `1920x1080` (16:9) |
+| Layout | `blur` | `crop` |
+| Duration | `60` | `auto` |
+| Caption size | 84px, 5 words | 56px, 9 words |
+| Output | `output/short_1080x1920.mp4` | `output/video_1920x1080.mp4` |
+
+A preset only fills flags you left alone — any explicit `--size`, `--layout`,
+`--duration`, `--font-size` or `--words-per-caption` overrides it.
+
+`--duration auto` targets the natural length of the dialogue once the
+dialogue-free stretches are gone: every line kept, nothing padded, nothing
+dropped. It is the default for `--mode video` and works in either mode.
+
+### 2. Look before you cut
 
 `--analyze` renders nothing and takes about half a second on a cached source.
 It prints the detected geometry, every line of dialogue with timestamps, and
@@ -95,7 +138,7 @@ the exact segment plan.
 Lines marked `X` are not in the cut. Use the timestamps to decide what to
 exclude.
 
-### 2. Pick your options from a menu
+### 3. Pick your options from a menu
 
 ```bash
 .venv/bin/python3 scripts/make_short.py --input input/my-video.mp4 --interactive
@@ -104,7 +147,7 @@ exclude.
 Menus for resolution → duration → framing → encode speed → upload. Each has a
 `*` marking the default, so pressing Enter through accepts all defaults.
 
-### 3. Or go straight through
+### 4. Or go straight through
 
 ```bash
 .venv/bin/python3 scripts/make_short.py \
@@ -257,11 +300,15 @@ large flat black areas.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--input` | required | Source video |
-| `--output` | `output/short_<W>x<H>.mp4` | |
-| `--duration` | `60` | Target seconds, hit within 50ms |
-| `--size` | `480x720` | `WxH`. Warns if landscape |
-| `--layout` | `blur` | `blur` / `crop` / `letterbox` |
+| `--input` | — | Local source video. Required unless `--url` is given |
+| `--url` | — | Fetch the source from a link into `input/` first |
+| `--max-height` | `1080` | Cap the `--url` download resolution |
+| `--force-download` | off | Refetch even if the file is already in `input/` |
+| `--output` | `output/short_<W>x<H>.mp4` | Overwrites silently |
+| `--mode` | `short` | `short` = 9:16 vertical, `video` = 16:9 landscape |
+| `--duration` | per mode | Seconds (hit within 50ms), or `auto` |
+| `--size` | per mode | `WxH`. Warns if landscape in `short` mode |
+| `--layout` | per mode | `blur` / `crop` / `letterbox` |
 | `--keep-subs` | off | Don't crop away burned-in subtitles |
 
 ### Choosing content
@@ -448,3 +495,55 @@ switch to `--encoder quality` for libx264, which compresses better but is
 ~10x slower.
 
 **403 reading video status.** Expected. `token.json` has upload-only scope.
+
+
+---
+
+## Working with Claude
+
+`CLAUDE.md` tells Claude how to run this pipeline. You mostly don't have to.
+
+### The minimum
+
+```
+Make a Short from https://youtu.be/XXXXXXXXXXX
+```
+
+Claude fetches it, analyses it, picks the strongest moment, and comes back with
+candidates and a recommendation before rendering.
+
+### Word choice picks the format
+
+Say **"short"** (or reel / vertical) and you get 1080x1920 for Shorts. Say
+**"make a youtube video"** (or landscape / 16:9) and you get 1920x1080 at the
+natural length of the dialogue.
+
+### What Claude decides for you
+
+Which moment to cut, duration, layout, caption handling, title, description and
+tags. Override any of it by saying so; otherwise let it choose.
+
+### What only you know
+
+- **Audience language.** The single most useful thing to say upfront. A
+  foreign-audio source with burned-in English subs needs `--keep-subs --no-subs`,
+  and Claude can only guess at your audience.
+- **Whose footage it is.** Third-party clips draw Content ID claims.
+- **A moment you already have in mind.** Faster than ranking candidates.
+- **Whether to upload, and how public.** Nothing is uploaded unless you ask, and
+  never public unless you say the word.
+
+### Iterating
+
+Transcription and geometry are cached, so re-cuts take seconds. Just say what to
+change:
+
+```
+Start 3 seconds earlier and drop the last line.
+Try candidate 2 instead.
+Same cut as a youtube video so I can compare.
+The caption says "Kargalgan", it should be "Karglgan".
+Upload it private with that title.
+```
+
+Interrupt any time — the expensive work is already on disk.

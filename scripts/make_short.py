@@ -14,6 +14,7 @@ has to be rediscovered:
   * Transcription is cached, so re-runs are nearly free.
 
 Quick start:
+    make_short.py --url "https://youtu.be/XXXXXXXXXXX" --analyze
     make_short.py --input input/test.mp4 --interactive
     make_short.py --input input/test.mp4 --analyze
     make_short.py --input input/test.mp4 --duration 60 --layout blur --upload
@@ -40,9 +41,39 @@ FONT_CANDIDATES = (
     "/System/Library/Fonts/Helvetica.ttc",
 )
 
+# Those faces are bold and read well at speed, but they carry no CJK,
+# Cyrillic, Arabic or Indic glyphs — such text comes out as hollow tofu
+# boxes with no warning at all. Anything beyond Latin gets a broad-coverage
+# face instead, at the cost of a lighter weight.
+UNICODE_FONT_CANDIDATES = (
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+)
+
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 
-LAYOUTS = ("blur", "crop", "letterbox")
+LAYOUTS = ("blur", "fit", "crop", "letterbox")
+
+# Two delivery targets. A preset only fills a flag the caller left alone, so
+# any explicit flag always wins.
+#
+#   short — 9:16 vertical at the Shorts native size. blur keeps the whole
+#           landscape frame (no faces lost) and parks captions on the fill
+#           rather than over the picture.
+#   video — 16:9 landscape. crop is a 1:1 passthrough for a 16:9 source, so
+#           nothing is cropped and nothing is upscaled. Length is 'auto'
+#           because a long-form cut should run as long as the dialogue does.
+#
+# Caption sizes are scaled from the hand-tuned 38px at 480x720: by width for
+# vertical, by height for landscape, since a 16:9 frame is wide but no taller.
+MODE_PRESETS = {
+    "short": {"size": "1080x1920", "layout": "blur", "duration": "60",
+              "font_size": 84, "words_per_caption": 5},
+    "video": {"size": "1920x1080", "layout": "crop", "duration": "auto",
+              "font_size": 56, "words_per_caption": 9},
+}
 
 
 # --------------------------------------------------------------------------
@@ -265,6 +296,38 @@ def clean_segments(tr, duration):
 # 3. cut plan
 # --------------------------------------------------------------------------
 
+def natural_windows(segments, source_duration,
+                    lead=0.35, tail=0.40, stitch=0.25):
+    """One padded window per line of dialogue, touching windows merged."""
+    if not segments:
+        raise SystemExit("no speech found; nothing to cut")
+
+    segs = [[s["start"] - lead, s["end"] + tail] for s in segments]
+    owners = [[s] for s in segments]
+    segs[0][0] = max(0.0, segs[0][0])
+    segs[-1][1] = min(source_duration, segs[-1][1])
+
+    m_segs, m_own = [segs[0]], [owners[0]]
+    for s, o in zip(segs[1:], owners[1:]):
+        if s[0] <= m_segs[-1][1] + stitch:
+            m_segs[-1][1] = max(m_segs[-1][1], s[1])
+            m_own[-1] = m_own[-1] + o
+        else:
+            m_segs.append(s)
+            m_own.append(o)
+    return m_segs, m_own
+
+
+def natural_duration(segments, source_duration, **kw):
+    """How long the dialogue runs once the dead air is gone.
+
+    This is what --duration auto targets: every line kept, every
+    dialogue-free stretch dropped, no padding either way.
+    """
+    segs, _ = natural_windows(segments, source_duration, **kw)
+    return sum(e - s for s, e in segs)
+
+
 def build_plan(segments, target, source_duration,
                lead=0.35, tail=0.40, stitch=0.25):
     """Keep every line of dialogue, drop the dialogue-free stretches.
@@ -274,24 +337,8 @@ def build_plan(segments, target, source_duration,
     dramatic beats between lines while leaving the long dead stretches
     on the floor, and it never sacrifices a line to hit the target.
     """
-    if not segments:
-        raise SystemExit("no speech found; nothing to cut")
-
-    segs = [[s["start"] - lead, s["end"] + tail] for s in segments]
-    owners = [[s] for s in segments]
-    segs[0][0] = max(0.0, segs[0][0])
-    segs[-1][1] = min(source_duration, segs[-1][1])
-
-    # merge windows that already touch
-    m_segs, m_own = [segs[0]], [owners[0]]
-    for s, o in zip(segs[1:], owners[1:]):
-        if s[0] <= m_segs[-1][1] + stitch:
-            m_segs[-1][1] = max(m_segs[-1][1], s[1])
-            m_own[-1] = m_own[-1] + o
-        else:
-            m_segs.append(s)
-            m_own.append(o)
-    segs, owners = m_segs, m_own
+    segs, owners = natural_windows(segments, source_duration,
+                                   lead, tail, stitch)
 
     def total():
         return sum(e - s for s, e in segs)
@@ -392,15 +439,34 @@ def caption_events(segments, segs, words_per_chunk=5,
     return events
 
 
-def render_captions(events, size, out_dir, font_size=38, margin=44,
-                    line_gap=7, bottom_frac=0.81, stroke=3):
+def pick_font(text):
+    """A Latin face when the captions are Latin, a Unicode face otherwise."""
+    latin = all(ord(c) < 0x250 for c in text)
+    order = FONT_CANDIDATES if latin else (UNICODE_FONT_CANDIDATES
+                                           + FONT_CANDIDATES)
+    path = next((f for f in order if os.path.exists(f)), None)
+    if not path:
+        raise SystemExit("no usable font found")
+    if not latin:
+        say(f"      non-Latin captions: using {os.path.basename(path)}")
+    return path
+
+
+def render_captions(events, size, out_dir, font_size=38, margin=None,
+                    line_gap=None, bottom_frac=0.81, stroke=None):
     from PIL import Image, ImageDraw, ImageFont
 
-    font_path = next((f for f in FONT_CANDIDATES if os.path.exists(f)), None)
-    if not font_path:
-        raise SystemExit("no usable font found")
+    font_path = pick_font("".join(e["t"] for e in events))
 
     W, H = size
+    # These were hand-tuned at 38px on a 480-wide frame. Hold those ratios so
+    # a 1080- or 1920-wide render looks the same rather than hair-thin.
+    if margin is None:
+        margin = round(W * 0.092)
+    if line_gap is None:
+        line_gap = max(2, round(font_size * 0.184))
+    if stroke is None:
+        stroke = max(2, round(font_size * 0.079))
     shutil.rmtree(out_dir, ignore_errors=True)
     os.makedirs(out_dir, exist_ok=True)
     font = ImageFont.truetype(font_path, font_size)
@@ -515,8 +581,13 @@ def video_chain(layout, area, out_w, out_h, fps_str, fade_at):
             f"pad={out_w}:{out_h}:{even((out_w - cw) / 2)}:{pad_y}:black[comp]",
         ]
 
-    else:  # blur: widest crop that keeps faces, soft fill, no upscaling
-        cw = even(min(area["w"], area["h"] * 1.49))
+    else:  # blur / fit: soft fill behind the picture, never an upscale
+        # blur spends ~20% of the source width to make the picture bigger,
+        # which is the right trade for faces and action. fit keeps every
+        # pixel instead — necessary whenever the frame carries edge-to-edge
+        # information: title cards, on-screen text, wide two-shots.
+        cw = even(area["w"] if layout == "fit"
+                  else min(area["w"], area["h"] * 1.49))
         ch = even(area["h"])
         cx = area["x"] + even((area["w"] - cw) / 2)
         fg_h = even(out_w * ch / cw)
@@ -640,11 +711,25 @@ def interactive(args, info, subs, speech_total, n_lines):
 def main():
     ap = argparse.ArgumentParser(
         description="Make a YouTube Short from a long video.")
-    ap.add_argument("--input", required=True)
+    ap.add_argument("--input",
+                    help="local source video; omit when using --url")
+    ap.add_argument("--url",
+                    help="download the source from this link into "
+                         "input/ first (see scripts/fetch_source.py)")
+    ap.add_argument("--max-height", type=int, default=1080,
+                    help="cap --url download resolution (default 1080)")
+    ap.add_argument("--force-download", action="store_true",
+                    help="refetch --url even if already in input/")
     ap.add_argument("--output")
-    ap.add_argument("--duration", type=float, default=60.0)
-    ap.add_argument("--size", default="480x720")
-    ap.add_argument("--layout", choices=LAYOUTS, default="blur")
+    ap.add_argument("--mode", choices=tuple(MODE_PRESETS), default="short",
+                    help="delivery target: short = 9:16 vertical for "
+                         "YouTube Shorts, video = 16:9 landscape")
+    ap.add_argument("--duration",
+                    help="exact output seconds, or 'auto' for the "
+                         "natural length of the dialogue")
+    ap.add_argument("--size", help="WxH; defaults per --mode")
+    ap.add_argument("--layout", choices=LAYOUTS,
+                    help="defaults per --mode")
     ap.add_argument("--encoder", choices=("fast", "quality"), default="fast")
     ap.add_argument("--quality", type=int, default=60,
                     help="hardware encoder quality 1-100 (higher = bigger)")
@@ -658,8 +743,9 @@ def main():
                     help="ignore dialogue before this timestamp")
     ap.add_argument("--speech-to", type=float, default=None,
                     help="ignore dialogue after this timestamp")
-    ap.add_argument("--font-size", type=int, default=38)
-    ap.add_argument("--words-per-caption", type=int, default=5)
+    ap.add_argument("--font-size", type=int, help="defaults per --mode")
+    ap.add_argument("--words-per-caption", type=int,
+                    help="defaults per --mode")
     ap.add_argument("--no-subs", action="store_true",
                     help="skip burning captions")
     ap.add_argument("--keep-subs", action="store_true",
@@ -676,6 +762,20 @@ def main():
     ap.add_argument("--cleanup", default="",
                     help="passed through to upload_youtube.py")
     args = ap.parse_args()
+
+    for flag, value in MODE_PRESETS[args.mode].items():
+        if getattr(args, flag) is None:
+            setattr(args, flag, value)
+
+    if args.url:
+        if args.input:
+            raise SystemExit("pass --input or --url, not both")
+        say("[0/7] Fetching source...")
+        from fetch_source import fetch
+        args.input = fetch(args.url, max_height=args.max_height,
+                           force=args.force_download)
+    if not args.input:
+        raise SystemExit("need --input PATH or --url LINK")
 
     src = os.path.abspath(args.input)
     if not os.path.exists(src):
@@ -728,9 +828,9 @@ def main():
     except ValueError:
         raise SystemExit(f"bad --size: {args.size}")
     out_w, out_h = even(out_w), even(out_h)
-    if out_w > out_h:
+    if out_w > out_h and args.mode == "short":
         say(f"      NOTE: {out_w}x{out_h} is landscape — YouTube will not "
-            f"treat this as a Short.")
+            f"treat this as a Short. Use --mode video for 16:9.")
 
     if args.speech_from or args.speech_to is not None:
         hi = args.speech_to if args.speech_to is not None else info["duration"]
@@ -739,6 +839,19 @@ def main():
                     if s["start"] >= args.speech_from and s["end"] <= hi]
         say(f"      speech range {args.speech_from:.1f}-{hi:.1f}s: "
             f"kept {len(segments)} of {before} lines")
+
+    if isinstance(args.duration, str):
+        if args.duration == "auto":
+            args.duration = round(
+                natural_duration(segments, info["duration"]), 3)
+            say(f"      auto duration: {args.duration:.1f}s of dialogue "
+                f"once the dead air is gone")
+        else:
+            try:
+                args.duration = float(args.duration)
+            except ValueError:
+                raise SystemExit(f"bad --duration: {args.duration} "
+                                 f"(seconds, or 'auto')")
 
     step(4, TOTAL, f"Planning cut to exactly {args.duration:.0f}s...")
     segs, kept, dropped = build_plan(segments, args.duration, info["duration"])
@@ -813,7 +926,7 @@ def main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     out = args.output or os.path.join(
-        OUTPUT_DIR, f"short_{out_w}x{out_h}.mp4")
+        OUTPUT_DIR, f"{args.mode}_{out_w}x{out_h}.mp4")
 
     cmd = ["ffmpeg", "-y", "-v", "error", "-stats", "-i", src]
     if events:

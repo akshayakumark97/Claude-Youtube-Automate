@@ -1,1 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets — never commit
+credentials/
+
+# Pipeline artifacts
+.cache/
+work/
+output/
+input/*
+!input/.gitkeep
+thumbnails/*
+!thumbnails/.gitkeep
+
+# macOS
 .DS_Store
+
+# Editor backups
+*.bak
