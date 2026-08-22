@@ -59,9 +59,12 @@ LAYOUTS = ("blur", "fit", "crop", "letterbox")
 # Two delivery targets. A preset only fills a flag the caller left alone, so
 # any explicit flag always wins.
 #
-#   short — 9:16 vertical at the Shorts native size. blur keeps the whole
-#           landscape frame (no faces lost) and parks captions on the fill
-#           rather than over the picture.
+#   short — 9:16 vertical at the Shorts native size. letterbox keeps native
+#           pixels with a plain black fill (no blur pass, faster render) and
+#           parks captions on the fill rather than over the picture. Use
+#           --layout blur only when a blurred/filled background is wanted
+#           explicitly, or the output is narrower than the source picture
+#           width (where letterbox becomes the harshest crop).
 #   video — 16:9 landscape. crop is a 1:1 passthrough for a 16:9 source, so
 #           nothing is cropped and nothing is upscaled. Length is 'auto'
 #           because a long-form cut should run as long as the dialogue does.
@@ -69,8 +72,8 @@ LAYOUTS = ("blur", "fit", "crop", "letterbox")
 # Caption sizes are scaled from the hand-tuned 38px at 480x720: by width for
 # vertical, by height for landscape, since a 16:9 frame is wide but no taller.
 MODE_PRESETS = {
-    "short": {"size": "1080x1920", "layout": "blur", "duration": "60",
-              "font_size": 84, "words_per_caption": 5},
+    "short": {"size": "1080x1920", "layout": "letterbox", "duration": "60",
+              "font_size": 64, "words_per_caption": 5},
     "video": {"size": "1920x1080", "layout": "crop", "duration": "auto",
               "font_size": 56, "words_per_caption": 9},
 }

@@ -48,6 +48,34 @@ current plan would drop. Work through the whole list before deciding. Look for:
 
 Dialogue density is not a signal. A dense stretch of nothing is still nothing.
 
+## Regional language and emotion
+
+These Shorts are made for Indian audiences across Telugu, Kannada, Hindi, Tamil and other
+regional-language sources, not just English. Read emotion, humour and hook strength in the
+source language itself — its own idiom, cadence, honorifics and cultural references — never
+by mentally translating to English first and scoring the English version. A line that looks
+flat translated word-for-word can be the biggest emotional beat in Telugu or Tamil, and a
+literal English gloss of a Hindi punchline usually kills the timing that makes it land.
+
+This affects editorial judgement, not just captioning:
+
+- **Emotion and humour read natively.** Sarcasm, affection, scolding-as-love, filmi
+  dialogue delivery, and regional comedic timing don't map 1:1 onto English hook patterns.
+  Judge the beat the way a native speaker of that language would feel it.
+- **Titles, descriptions and tags should match the audience's language and idiom**, not be
+  a literal English translation of the transcript. If the source is Telugu, a Telugu (or
+  natural code-mixed Telugu-English) title that carries the real emotional hook usually
+  outperforms an English gloss — offer the in-language option alongside an English one when
+  useful, and say which you'd ship.
+- **Whisper still misreads names, brands and numbers** in every one of these languages, often
+  worse than in English — verify anything load-bearing against the source before trusting a
+  caption, per `CLAUDE.md`.
+- **Burned-in subtitles matter here too.** Per `CLAUDE.md`'s non-English guidance, check
+  whether the source already carries burned-in translation before assuming Whisper's
+  transcription of the spoken language is what should be captioned.
+- If you are inferring emotional tone because you don't have native fluency in the specific
+  language, say so explicitly rather than presenting a guess as a confident read.
+
 ## The hook
 
 The first 1–3 seconds decide everything. The viewer should think *wait, what?* / *how did
@@ -76,12 +104,18 @@ near it, so nothing is dropped and nothing is padded.
 
 ## Framing
 
-Default to `blur` at `480x720`. Go to `720x1280` when the source is sharp and detail
-matters. Never output landscape.
+Default to `letterbox` at `1080x1920` — native pixels, plain black fill, no blur pass, so
+it renders faster. That default only holds because 1080 sits close to a 1920-wide source's
+picture width; if you size down to `480x720` or `720x1280`, letterbox becomes the harshest
+crop available and you should switch to `blur` instead.
+
+Only reach for `blur` when the user explicitly asks for a filled/blurred background, or the
+output width is much narrower than the source picture width. Don't apply it by default —
+the blur pass (split, scale, gblur, overlay) is the slowest part of the filtergraph, and a
+plain background is the faster, and now standard, choice.
 
 Choose `crop` only when the subject sits centre-frame and losing the sides costs nothing —
-remember it anchors to the top of the picture. Choose `letterbox` only at large output
-widths; at 480x720 it is the harshest crop available, not a composition-preserving one.
+remember it anchors to the top of the picture.
 
 Never crop away a face, the hands doing the thing, the object being demonstrated, on-screen
 text, or the visual payoff. If the moment only makes sense visually, that outranks a good

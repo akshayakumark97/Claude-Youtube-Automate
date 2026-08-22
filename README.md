@@ -84,16 +84,16 @@ both work.
 ### 1. Pick a delivery mode
 
 ```bash
-make_short.py --input input/VIDEO.mp4                 # Short:  1080x1920, blur
+make_short.py --input input/VIDEO.mp4                 # Short:  1080x1920, letterbox
 make_short.py --input input/VIDEO.mp4 --mode video    # Video:  1920x1080, crop
 ```
 
 | | `--mode short` (default) | `--mode video` |
 |---|---|---|
 | Size | `1080x1920` (9:16) | `1920x1080` (16:9) |
-| Layout | `blur` | `crop` |
+| Layout | `letterbox` (plain black fill, no blur — fastest) | `crop` |
 | Duration | `60` | `auto` |
-| Caption size | 84px, 5 words | 56px, 9 words |
+| Caption size | 64px, 5 words | 56px, 9 words |
 | Output | `output/short_1080x1920.mp4` | `output/video_1920x1080.mp4` |
 
 A preset only fills flags you left alone — any explicit `--size`, `--layout`,
@@ -268,13 +268,26 @@ file: **-14.02 LUFS, -1.32 dBTP, no clipping**.
 Going from a 2.39:1 cinematic source to a 2:3 vertical frame means losing
 something. Pick which.
 
-### `--layout blur` (default)
+### `--layout letterbox` (default for `--mode short`)
+
+Native 1:1 pixels, plain black bars above and below — no blur pass, so it's
+the fastest layout to render.
+
+Sharpest possible — zero scaling — but shows less of the scene and leaves
+flat black areas. Only a good composition match when the output width is
+close to the source's picture width (the default 1080x1920 from a 1920x1080
+source is exactly that case). At small sizes like 480x720 it becomes the
+harshest crop of the three — use `blur` there instead.
+
+### `--layout blur` (opt-in)
 
 Widest crop that keeps faces intact, downscaled to the output width so there
 is **no upscaling**, with a blurred and darkened copy filling the rest.
 
-Best all-rounder. Fills the frame without dead black, keeps composition, stays
-sharp. On dark footage the blur reads as a soft glow.
+Fills the frame without dead black and keeps composition, but the blur pass
+(split, scale, gblur, overlay) is the slowest part of the filtergraph — pick
+it explicitly when you want a filled/blurred background, or when rendering at
+a narrower size where letterbox crops too hard.
 
 ### `--layout crop`
 
@@ -284,13 +297,6 @@ Sounds ideal, usually isn't. On a 2.39:1 source only ~22% of the width
 survives, subjects that sit off-centre get cut in half, and the upscale
 (~1.7x) softens a low-bitrate source noticeably. Good when your subject is
 reliably centred.
-
-### `--layout letterbox`
-
-Native 1:1 pixels, black bars above and below.
-
-Sharpest possible — zero scaling — but shows less of the scene and leaves
-large flat black areas.
 
 ---
 
@@ -308,7 +314,7 @@ large flat black areas.
 | `--mode` | `short` | `short` = 9:16 vertical, `video` = 16:9 landscape |
 | `--duration` | per mode | Seconds (hit within 50ms), or `auto` |
 | `--size` | per mode | `WxH`. Warns if landscape in `short` mode |
-| `--layout` | per mode | `blur` / `crop` / `letterbox` |
+| `--layout` | per mode | `letterbox` (short) / `crop` (video) / `blur` — see below |
 | `--keep-subs` | off | Don't crop away burned-in subtitles |
 
 ### Choosing content
@@ -325,7 +331,7 @@ large flat black areas.
 | Flag | Default | Notes |
 |---|---|---|
 | `--fix WRONG=RIGHT` | — | Correct a caption. Repeatable |
-| `--font-size` | `38` | |
+| `--font-size` | per mode (64 short / 56 video) | |
 | `--words-per-caption` | `5` | |
 | `--no-subs` | off | Skip captions entirely |
 

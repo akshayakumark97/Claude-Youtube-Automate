@@ -38,6 +38,17 @@ only what must never be re-derived or re-litigated.
 - Whisper misreads names, brands, coined words and numbers. Verify anything load-bearing
   against the source and correct it with `--fix`.
 - `work/` is created on demand. `thumbnails/` is not touched by any script.
+- Default layout for `--mode short` is `letterbox` — native pixels, plain black fill, **no
+  blur pass** — because that's faster to render. `--layout blur` is opt-in: use it only when
+  a blurred/filled background is explicitly wanted, or the output is much narrower than the
+  source picture width (where letterbox becomes the harshest crop instead).
+- Default caption size for `--mode short` is `64px` (down from an earlier `84px` — it read as
+  too large on 1080x1920).
+- These Shorts are made for Indian audiences across Telugu, Kannada, Hindi, Tamil and other
+  regional languages, not just English. Editorial judgement (emotion, humour, hook strength)
+  must be read natively in the source language, and titles/descriptions/tags should match the
+  audience's language and idiom rather than a literal English translation. See the
+  `short-editor` skill's "Regional language and emotion" section.
 - Sources arrive either already in `input/` or via `--url`, which wraps yt-dlp
   (`scripts/fetch_source.py`). It prefers H.264+AAC MP4, caps at 1080p, and reuses a
   file already in `input/`. Dependencies are pinned in `requirements.txt`.
@@ -48,7 +59,7 @@ The user's wording picks the mode. Take it literally.
 
 | They say | Mode | Output |
 |---|---|---|
-| "short", "shorts", "reel", "vertical" | `--mode short` (default) | 1080x1920, `blur`, duration 60 |
+| "short", "shorts", "reel", "vertical" | `--mode short` (default) | 1080x1920, `letterbox`, duration 60 |
 | "youtube video", "video", "landscape", "16:9" | `--mode video` | 1920x1080, `crop`, duration `auto` |
 
 A preset only fills a flag the caller left alone, so any explicit `--size`,
@@ -89,28 +100,34 @@ stretches removed, then fitted to exactly `--duration`.
 
 **Layouts are not what their names suggest:**
 
-- `blur` (default) — ~3:2 centre crop, scaled to full output width, seated slightly above
-  centre over a blurred, darkened copy of itself. At 480x720 the picture band is roughly
-  y=123-445 and captions sit at y~583, i.e. on the blur, never over faces. Safest default.
+- `letterbox` (default for `--mode short`) — a **native-pixel slice exactly `--size`
+  wide**, not a scale-to-fit, padded with plain black — no blur pass, so it's the fastest
+  layout to render. From a 1920-wide source at 480x720 you keep 25% of the frame width. It
+  only preserves the original composition when the output width is near the source picture
+  width (e.g. 1080x1920 from 1920x1080, the default). At small sizes (480x720, 720x1280) it
+  is the most aggressive crop of the three — use `blur` there instead.
+- `blur` — ~3:2 centre crop, scaled to full output width, seated slightly above centre over
+  a blurred, darkened copy of itself. At 480x720 the picture band is roughly y=123-445 and
+  captions sit at y~583, i.e. on the blur, never over faces. Opt-in: pick it explicitly when
+  a filled/blurred background is wanted, or at output sizes where letterbox crops too hard.
 - `crop` — centre crop to the output aspect, anchored to the **top** of the picture area,
   full bleed. Fills the frame, cuts the sides hard on landscape sources.
-- `letterbox` — a **native-pixel slice exactly `--size` wide**, not a scale-to-fit. From a
-  1920-wide source at 480x720 you keep 25% of the frame width. It only preserves the
-  original composition when the output width is near the source picture width (e.g.
-  1080x1920 from 1920x1080). At small sizes it is the most aggressive crop of the three.
 
 **Captions have no CJK, Cyrillic, Arabic or Indic glyphs in the Latin faces**, and a
 missing glyph renders as a hollow tofu box with no warning. `pick_font` switches to
 Arial Unicode automatically for non-Latin text and logs which face it used — check that
-line whenever the transcript language is not English. Stroke width, line gap and side
-margin all scale from the font size and output width, so the 480x720 look is preserved
-at 1080x1920.
+line whenever the transcript language is not English. Verified: Arial Unicode.ttf has real
+glyph coverage (not tofu) for Devanagari (Hindi), Tamil, Telugu and Kannada, so a
+Whisper transcript in any of those scripts captions correctly without a font change. Stroke
+width, line gap and side margin all scale from the font size and output width, so the
+480x720 look is preserved at 1080x1920.
 
 **`--output` defaults to `output/<mode>_<W>x<H>.mp4` and overwrites silently.** Pass
 `--output` whenever keeping more than one cut at the same size.
 
-Captions: uppercase, ~5 words per chunk, 38px, centred at 81% of output height with
-shadow and dark stroke. `--fix WRONG=RIGHT` is case-insensitive and repeatable.
+Captions: uppercase, ~5 words per chunk, sized per `--mode` (64px short / 56px video,
+overridable with `--font-size`), centred at 81% of output height with shadow and dark
+stroke. `--fix WRONG=RIGHT` is case-insensitive and repeatable.
 
 Audio: always highpass → EQ → compressor → limiter → two-pass `loudnorm` to −14 LUFS,
 with a 0.6s fade on picture and sound at the end.
