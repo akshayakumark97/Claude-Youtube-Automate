@@ -114,12 +114,25 @@ output width is much narrower than the source picture width. Don't apply it by d
 the blur pass (split, scale, gblur, overlay) is the slowest part of the filtergraph, and a
 plain background is the faster, and now standard, choice.
 
-Choose `crop` only when the subject sits centre-frame and losing the sides costs nothing —
-remember it anchors to the top of the picture.
+If letterbox still leaves too much black (a 16:9 source has a short picture band relative
+to a 1920-tall canvas) and a fuller, more zoomed frame is wanted, reach for `crop` — not
+`fit`. `fit` scales the *entire* source width down to fit, which on a 16:9-ish source
+leaves the visible picture occupying only ~25% of the output height with blur/pad filling
+the rest; it reads as small and thin on a Short. `crop` fills edge-to-edge with no bars.
 
-Never crop away a face, the hands doing the thing, the object being demonstrated, on-screen
-text, or the visual payoff. If the moment only makes sense visually, that outranks a good
-sentence elsewhere.
+Choose `crop` when the subject sits centre-frame — remember it anchors to the top of the
+picture and cuts the sides hard on a landscape source. Don't avoid `crop` just to protect a
+peripheral on-screen overlay (a character name card, a channel bug); the "never crop away
+... on-screen text" rule below is about text that carries the payoff, not incidental
+overlays. A full, well-filled vertical frame matters more for retention than saving a name
+card at the edge. Still pull a frame at the moment in question to confirm the actual
+payoff — a face, the object being demonstrated — survives the crop before finalizing.
+
+Never crop away a face, the hands doing the thing, the object being demonstrated, payoff-
+carrying on-screen text (a reveal, a key stat), or the visual payoff. If the moment only
+makes sense visually, that outranks a good sentence elsewhere. This does not extend to
+incidental overlays — a character name card, a channel bug — which are fine to lose to a
+full-bleed `crop`; see "Framing" above.
 
 ## Retention pass
 
@@ -154,11 +167,17 @@ Story:              two sentences
 Payoff:             what the viewer gets
 Visual strength:    low / medium / high
 Retention risk:     what could go wrong
-Layout / size:      blur|crop|letterbox @ WxH
+Layout / size:      blur|crop|letterbox @ WxH   (recommended — see below)
 ```
 
 Then: three title options, a recommended one, a description, hashtags, tags, and whether a
 CTA is warranted.
+
+**Always ask which aspect ratio/size to render at, batched into this same presentation** —
+recommend one (per Framing above) but confirm before rendering. Never default to
+1080x1920, or any size, silently; this holds even when the rest of the candidate is
+otherwise obvious. Duration and layout stay under the normal "ask only when genuinely
+unclear" rule — this carve-out is specifically for aspect ratio/size.
 
 ## Titles, description, tags
 

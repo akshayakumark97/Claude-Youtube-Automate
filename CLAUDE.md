@@ -188,8 +188,10 @@ invent flags. Notable ones beyond the obvious:
 3. **Dry-run the exact cut** before rendering — the same command plus your
    `--speech-from/--speech-to/--duration`, still with `--analyze`. Confirm the kept list
    contains the hook and the payoff, and that nothing important was dropped to fit.
-4. **Ask once, batched**, when two candidates are close or duration/size/framing is
-   genuinely unclear. Otherwise proceed.
+4. **Always ask which aspect ratio/size to render at**, batched with the candidate
+   presentation — never default to 1080x1920 (or any size) silently. Beyond that, ask
+   again only when two candidates are close or duration/framing is genuinely unclear;
+   otherwise proceed.
 5. **Render.**
 6. **Check the render**: the final probe line reports actual size, duration and file size —
    confirm they match the intent. Read the `.srt` for misheard names. Confirm the first
